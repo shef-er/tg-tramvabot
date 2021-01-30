@@ -24,8 +24,9 @@ GREETING_STATION_BUTTONS = "Выберите станцию и направле�
 
 TEXT_RETRY = "Повторить поиск"
 TEXT_BACK = "Назад"
-TEXT_NO_RESULTS = "Трамваев не найдено"
+TEXT_NO_RESULTS = "Результатов не найдено"
 TEXT_RESULT_ROW_PREFIX = "Трамвай №"
+TEXT_TRY_LATER = "Произошла ошибка, попробуйте снова позже"
 
 COMMAND_BACK = "BACK"
 
@@ -64,10 +65,14 @@ def get_letter_buttons() -> list:
 
 
 def get_station_buttons_by_first_letter(letter: str) -> list:
-    text = requests.get("https://mobile.ettu.ru/stations/%s" % letter).text
+    response = requests.get("https://mobile.ettu.ru/stations/%s" % letter).text
+    if not response:
+        return []
 
-    tree = html.fromstring(text)
+    tree = html.fromstring(response)
     links = tree.xpath("//div")[0].xpath("./a[@href]")
+    if len(links) == 0:
+        return []
 
     station_buttons = list(map(
         lambda link: [InlineKeyboardButton(link.text, callback_data=link.attrib['href'].rsplit('/', 1)[-1])],
@@ -80,6 +85,8 @@ def get_station_buttons_by_first_letter(letter: str) -> list:
 def get_result_by_station(station: str) -> str:
     station = station.rsplit('/', 1)[-1]
     response = requests.get("https://mobile.ettu.ru/station/%s" % station).text
+    if not response:
+        return TEXT_TRY_LATER
 
     tree = html.fromstring(response)
     results_div = tree.xpath("//div")[0]
@@ -105,7 +112,7 @@ def get_result_by_station(station: str) -> str:
             time = divs[1].text.strip()
             distance = divs[2].text.strip()
 
-            result.append("%s%-4s %6s %5s" % (TEXT_RESULT_ROW_PREFIX, "%s," % number, "%s," % time, distance))
+            result.append("%s%-4s %7s %6s" % (TEXT_RESULT_ROW_PREFIX, "%s," % number, "%s," % time, distance))
 
     return "\n".join(result)
 
@@ -143,8 +150,12 @@ def button_command(update: Update, context: CallbackContext) -> None:
         keyboard_buttons.append([InlineKeyboardButton(TEXT_BACK, callback_data=COMMAND_BACK)])
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
+        message = TEXT_NO_RESULTS
+        if keyboard_buttons:
+            message = GREETING_STATION_BUTTONS % query.data
+
         query.edit_message_text(
-            text=GREETING_STATION_BUTTONS % query.data,
+            text=message,
             reply_markup=reply_markup
         )
     elif query.data:
@@ -154,8 +165,10 @@ def button_command(update: Update, context: CallbackContext) -> None:
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
         result = get_result_by_station(query.data)
+        message = "```\n%s\n```" % result
+
         query.edit_message_text(
-            text="```\n%s\n```" % result,
+            text=message,
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN_V2
         )
