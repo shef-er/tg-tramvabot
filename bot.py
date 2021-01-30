@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # pylint: disable=W0613, C0116
 
-"""
-Basic example for a bot that uses inline keyboards.
-"""
 import logging
 import requests
 from lxml import html
@@ -20,11 +17,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 GREETING_HELP = "Введите /start или /search чтобы узнать где ваш трамвай"
 GREETING_LETTER_BUTTONS = "Выберите первый символ названия станции на которой находитесь:"
 GREETING_STATION_BUTTONS = "Выберите станцию и направление (символ %s):"
 
-BUTTON_BACK = "Назад"
+TEXT_RETRY = "Повторить поиск"
+TEXT_BACK = "Назад"
 COMMAND_BACK = "BACK"
 
 
@@ -72,8 +71,6 @@ def get_station_buttons_by_first_letter(letter: str) -> list:
         links
     ))
 
-    station_buttons.append([InlineKeyboardButton(BUTTON_BACK, callback_data=COMMAND_BACK)])
-
     return station_buttons
 
 
@@ -118,6 +115,7 @@ def start_command(update: Update, context: CallbackContext) -> None:
 def search_command(update: Update, context: CallbackContext) -> None:
     keyboard_buttons = get_letter_buttons()
     reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+
     update.message.reply_text(
         GREETING_LETTER_BUTTONS,
         reply_markup=reply_markup
@@ -131,6 +129,7 @@ def button_command(update: Update, context: CallbackContext) -> None:
     if query.data == COMMAND_BACK:
         keyboard_buttons = get_letter_buttons()
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+
         query.edit_message_text(
             text=GREETING_LETTER_BUTTONS,
             reply_markup=reply_markup
@@ -138,16 +137,23 @@ def button_command(update: Update, context: CallbackContext) -> None:
     elif len(query.data) == 1:
         context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
         keyboard_buttons = get_station_buttons_by_first_letter(query.data)
+        keyboard_buttons.append([InlineKeyboardButton(TEXT_BACK, callback_data=COMMAND_BACK)])
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+
         query.edit_message_text(
             text=GREETING_STATION_BUTTONS % query.data,
             reply_markup=reply_markup
         )
     elif query.data:
         context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
+        keyboard_buttons = list()
+        keyboard_buttons.append([InlineKeyboardButton(TEXT_RETRY, callback_data=COMMAND_BACK)])
+        reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+
         result = get_result_by_station(query.data)
         query.edit_message_text(
-            text=result
+            text=result,
+            reply_markup=reply_markup
         )
     else:
         query.edit_message_text(text=GREETING_HELP)
