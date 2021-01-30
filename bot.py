@@ -20,9 +20,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-GREETING_HELP = "Введите /start чтобы узнать где ваш трамвай."
-GREETING_LETTER_BUTTONS = "Выберите первый символ станции на которой находитесь:"
+GREETING_HELP = "Введите /start или /search чтобы узнать где ваш трамвай"
+GREETING_LETTER_BUTTONS = "Выберите первый символ названия станции на которой находитесь:"
 GREETING_STATION_BUTTONS = "Выберите станцию и направление (символ %s):"
 
 BUTTON_BACK = "Назад"
@@ -106,13 +105,17 @@ def get_result_by_station(station: str) -> str:
             time = divs[1].text.strip()
             distance = divs[2].text.strip()
 
-            result.append("%-16s %-16s %-16s" % ("Трамвай №%s," % number, "%s," % time, distance))
+            result.append("%-20s %-8s %-8s" % ("Трамвай №%s," % number, "%s," % time, distance))
 
     return "\n".join(result)
 
 
-@send_action(ChatAction.TYPING)
 def start_command(update: Update, context: CallbackContext) -> None:
+    search_command(update, context)
+
+
+@send_action(ChatAction.TYPING)
+def search_command(update: Update, context: CallbackContext) -> None:
     keyboard_buttons = get_letter_buttons()
     reply_markup = InlineKeyboardMarkup(keyboard_buttons)
     update.message.reply_text(
@@ -133,17 +136,21 @@ def button_command(update: Update, context: CallbackContext) -> None:
             reply_markup=reply_markup
         )
     elif len(query.data) == 1:
+        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
         keyboard_buttons = get_station_buttons_by_first_letter(query.data)
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
         query.edit_message_text(
             text=GREETING_STATION_BUTTONS % query.data,
             reply_markup=reply_markup
         )
-    else:
+    elif query.data:
+        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
         result = get_result_by_station(query.data)
         query.edit_message_text(
             text=result
         )
+    else:
+        query.edit_message_text(text=GREETING_HELP)
 
 
 @send_action(ChatAction.TYPING)
@@ -155,6 +162,7 @@ def main():
     updater = Updater(TOKEN, use_context=True)
 
     updater.dispatcher.add_handler(CommandHandler('start', start_command))
+    updater.dispatcher.add_handler(CommandHandler('search', search_command))
     updater.dispatcher.add_handler(CallbackQueryHandler(button_command))
     updater.dispatcher.add_handler(CommandHandler('help', help_command))
 
