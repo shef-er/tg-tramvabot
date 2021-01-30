@@ -6,7 +6,7 @@ import requests
 from lxml import html
 from functools import wraps
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ChatAction
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ChatAction, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 
 from config import TOKEN
@@ -24,6 +24,9 @@ GREETING_STATION_BUTTONS = "Выберите станцию и направле�
 
 TEXT_RETRY = "Повторить поиск"
 TEXT_BACK = "Назад"
+TEXT_NO_RESULTS = "Трамваев не найдено"
+TEXT_RESULT_ROW_PREFIX = "Трамвай №"
+
 COMMAND_BACK = "BACK"
 
 
@@ -92,7 +95,7 @@ def get_result_by_station(station: str) -> str:
     timings = results_div.xpath("./div")
 
     if len(timings) == 0:
-        result.append("Трамваев не найдено")
+        result.append(TEXT_NO_RESULTS)
     else:
         timings.pop(-1)
         for timing in timings:
@@ -102,7 +105,7 @@ def get_result_by_station(station: str) -> str:
             time = divs[1].text.strip()
             distance = divs[2].text.strip()
 
-            result.append("%-20s %-8s %-8s" % ("Трамвай №%s," % number, "%s," % time, distance))
+            result.append("%s%-4s %6s %5s" % (TEXT_RESULT_ROW_PREFIX, "%s," % number, "%s," % time, distance))
 
     return "\n".join(result)
 
@@ -152,8 +155,9 @@ def button_command(update: Update, context: CallbackContext) -> None:
 
         result = get_result_by_station(query.data)
         query.edit_message_text(
-            text=result,
-            reply_markup=reply_markup
+            text="```\n%s\n```" % result,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN_V2
         )
     else:
         query.edit_message_text(text=GREETING_HELP)
