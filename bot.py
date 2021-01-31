@@ -2,33 +2,40 @@
 # pylint: disable=W0613, C0116
 
 import logging
-import requests
-from lxml import html
 from functools import wraps
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ChatAction, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 
+import ettu_api
 from config import TOKEN
-
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
 
 GREETING_HELP = "Введите /start или /search чтобы узнать где ваш трамвай"
 GREETING_LETTER_BUTTONS = "Выберите первый символ названия станции на которой находитесь:"
 GREETING_STATION_BUTTONS = "Выберите станцию и направление (символ %s):"
 
-TEXT_RETRY = "Повторить поиск"
-TEXT_BACK = "Назад"
+ERROR_TRY_LATER = "Произошла ошибка, попробуйте снова позже"
 TEXT_NO_RESULTS = "Результатов не найдено"
+
+BUTTON_RETRY = "Новый поиск"
+BUTTON_BACK = "Назад"
+
 TEXT_RESULT_ROW_PREFIX = "Трамвай №"
-TEXT_TRY_LATER = "Произошла ошибка, попробуйте снова позже"
 
 COMMAND_BACK = "BACK"
+
+station_letters_list = [
+    ["1", "4", "7", "А", "Б", "В", "Г", "Д", ],
+    ["Е", "Ж", "З", "И", "К", "Л", "М", "Н", ],
+    ["О", "П", "Р", "С", "T", "У", "Ф", "Х", ],
+    ["Ц", "Ч", "Ш", "Щ", "Э", "Ю", "Я", ],
+]
+
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 
 def send_action(action):
@@ -45,16 +52,9 @@ def send_action(action):
     return decorator
 
 
-def get_letter_buttons() -> list:
-    letters_list = [
-        ["1", "4", "7", "А", "Б", "В", "Г", "Д", ],
-        ["Е", "Ж", "З", "И", "К", "Л", "М", "Н", ],
-        ["О", "П", "Р", "С", "T", "У", "Ф", "Х", ],
-        ["Ц", "Ч", "Ш", "Щ", "Э", "Ю", "Я", ],
-    ]
-
+def build_letter_buttons() -> list:
     letter_buttons = list()
-    for letters in letters_list:
+    for letters in station_letters_list:
         buttons = list(map(
             lambda button: InlineKeyboardButton(button, callback_data=button),
             letters
@@ -64,57 +64,48 @@ def get_letter_buttons() -> list:
     return letter_buttons
 
 
-def get_station_buttons_by_first_letter(letter: str) -> list:
-    response = requests.get("https://mobile.ettu.ru/stations/%s" % letter).text
-    if not response:
+def build_station_buttons_by_first_letter(letter: str) -> list:
+    response = ettu_api.get_stations_by_first_letter(letter)
+    if response['error'] or not response['payload']:
         return []
 
-    tree = html.fromstring(response)
-    links = tree.xpath("//div")[0].xpath("./a[@href]")
-    if len(links) == 0:
-        return []
+    stations = response['payload']
 
     station_buttons = list(map(
-        lambda link: [InlineKeyboardButton(link.text, callback_data=link.attrib['href'].rsplit('/', 1)[-1])],
-        links
+        lambda station: [
+            InlineKeyboardButton(station['name'], callback_data=station['code'])
+        ],
+        stations
     ))
 
     return station_buttons
 
 
-def get_result_by_station(station: str) -> str:
-    station = station.rsplit('/', 1)[-1]
-    response = requests.get("https://mobile.ettu.ru/station/%s" % station).text
-    if not response:
-        return TEXT_TRY_LATER
-
-    tree = html.fromstring(response)
-    results_div = tree.xpath("//div")[0]
-
-    station_name = results_div.xpath("./p")[0].text.strip()
-    time = results_div.xpath("./p")[0].xpath("./b")[0].text.strip()
-
-    result = [
+def build_result_by_station_code(code: str) -> str:
+    response = ettu_api.get_car_timings_by_station_code(code)
+    if response['error']:
+        return ERROR_TRY_LATER
+    
+    station_name = response['payload']['station']
+    time = response['payload']['time']
+    cars = response['payload']['cars']
+    
+    result_list = [
         "%s %s" % (station_name, time),
         "",
     ]
-
-    timings = results_div.xpath("./div")
-
-    if len(timings) == 0:
-        result.append(TEXT_NO_RESULTS)
+    
+    if not cars:
+        result_list.append(TEXT_NO_RESULTS)
     else:
-        timings.pop(-1)
-        for timing in timings:
-            divs = timing.xpath("./div")
+        for car in cars:
+            number = car['number']
+            time = car['time']
+            distance = car['distance']
 
-            number = divs[0].xpath("./b")[0].text.strip()
-            time = divs[1].text.strip()
-            distance = divs[2].text.strip()
+            result_list.append("%s%-4s %7s %6s" % (TEXT_RESULT_ROW_PREFIX, "%s," % number, "%s," % time, distance))
 
-            result.append("%s%-4s %7s %6s" % (TEXT_RESULT_ROW_PREFIX, "%s," % number, "%s," % time, distance))
-
-    return "\n".join(result)
+    return "\n".join(result_list)
 
 
 def start_command(update: Update, context: CallbackContext) -> None:
@@ -123,7 +114,7 @@ def start_command(update: Update, context: CallbackContext) -> None:
 
 @send_action(ChatAction.TYPING)
 def search_command(update: Update, context: CallbackContext) -> None:
-    keyboard_buttons = get_letter_buttons()
+    keyboard_buttons = build_letter_buttons()
     reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
     update.message.reply_text(
@@ -132,12 +123,13 @@ def search_command(update: Update, context: CallbackContext) -> None:
     )
 
 
+@send_action(ChatAction.TYPING)
 def button_command(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
 
     if query.data == COMMAND_BACK:
-        keyboard_buttons = get_letter_buttons()
+        keyboard_buttons = build_letter_buttons()
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
         query.edit_message_text(
@@ -145,9 +137,8 @@ def button_command(update: Update, context: CallbackContext) -> None:
             reply_markup=reply_markup
         )
     elif len(query.data) == 1:
-        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
-        keyboard_buttons = get_station_buttons_by_first_letter(query.data)
-        keyboard_buttons.append([InlineKeyboardButton(TEXT_BACK, callback_data=COMMAND_BACK)])
+        keyboard_buttons = build_station_buttons_by_first_letter(query.data)
+        keyboard_buttons.append([InlineKeyboardButton(BUTTON_BACK, callback_data=COMMAND_BACK)])
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
         message = TEXT_NO_RESULTS
@@ -159,12 +150,11 @@ def button_command(update: Update, context: CallbackContext) -> None:
             reply_markup=reply_markup
         )
     elif query.data:
-        context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
         keyboard_buttons = list()
-        keyboard_buttons.append([InlineKeyboardButton(TEXT_RETRY, callback_data=COMMAND_BACK)])
+        keyboard_buttons.append([InlineKeyboardButton(BUTTON_RETRY, callback_data=COMMAND_BACK)])
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
-        result = get_result_by_station(query.data)
+        result = build_result_by_station_code(query.data)
         message = "```\n%s\n```" % result
 
         query.edit_message_text(
