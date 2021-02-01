@@ -18,6 +18,7 @@ ERROR_TRY_LATER = "Произошла ошибка, попробуйте сно�
 TEXT_NO_RESULTS = "Результатов не найдено"
 
 BUTTON_RETRY = "Новый поиск"
+BUTTON_REFRESH = "Обновить"
 BUTTON_BACK = "Назад"
 
 TEXT_RESULT_ROW_PREFIX = "Трамвай №"
@@ -151,6 +152,7 @@ def button_command(update: Update, context: CallbackContext) -> None:
         )
     elif query.data:
         keyboard_buttons = list()
+        keyboard_buttons.append([InlineKeyboardButton(BUTTON_REFRESH, callback_data=query.data)])
         keyboard_buttons.append([InlineKeyboardButton(BUTTON_RETRY, callback_data=COMMAND_BACK)])
         reply_markup = InlineKeyboardMarkup(keyboard_buttons)
 
