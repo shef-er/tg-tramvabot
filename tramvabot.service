@@ -1,0 +1,12 @@
+# put me in /usr/lib/systemd/system/
+[Unit]
+Description=TramvaBot
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /<path-to-bot-directory>/bot.py
+StandardInput=tty-force
+
+[Install]
+WantedBy=multi-user.target

@@ -11,15 +11,15 @@ from config import TOKEN
 
 
 GREETING_HELP = "Введите /start или /search чтобы узнать где ваш трамвай"
-GREETING_LETTER_BUTTONS = "Выберите первый символ названия станции на которой находитесь:"
+GREETING_LETTER_BUTTONS = "Выберите первый символ названия станции:"
 GREETING_STATION_BUTTONS = "Выберите станцию и направление (символ %s):"
 
 ERROR_TRY_LATER = "Произошла ошибка, попробуйте снова позже"
 TEXT_NO_RESULTS = "Результатов не найдено"
 
-BUTTON_RETRY = "Новый поиск"
-BUTTON_REFRESH = "Обновить"
-BUTTON_BACK = "Назад"
+BUTTON_RETRY = "✅ Новый поиск"
+BUTTON_REFRESH = "🔄 Обновить"
+BUTTON_BACK = "↩️ Назад"
 
 TEXT_RESULT_ROW_PREFIX = "Трамвай №"
 
@@ -71,6 +71,8 @@ def build_station_buttons_by_first_letter(letter: str) -> list:
         return []
 
     stations = response['payload']
+
+    logging.info(str(stations));
 
     station_buttons = list(map(
         lambda station: [

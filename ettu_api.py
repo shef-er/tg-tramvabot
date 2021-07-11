@@ -23,13 +23,15 @@ def get_stations_by_first_letter(letter: str):
     if len(links) == 0:
         return result
 
-    result['payload'] = list(map(
+    payload = list(map(
         lambda link: {
             'name': link.text,
             'code': link.attrib['href'].rsplit('/', 1)[-1]
         },
         links
     ))
+
+    result['payload'] = sorted(payload, key=lambda item: item['name'])
 
     return result
 
